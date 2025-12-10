@@ -1,42 +1,86 @@
-# 512-Zhang-Fan-Final-Project
-# Body-Motion OLED Game with Dual IMUs
+# **IMU-Driven Action Game on ESP32-C3 + OLED**
+*A full-body motion-controlled pixel game built with three ADXL345 sensors, real-time motion classification, and a scrolling 2× world map.*
 
-This project is a tiny “body-controlled” game that runs on a microcontroller with an OLED display.  
-Two IMU sensors (one on the hand, one on the thigh) detect different motion patterns and control a small character on a 2D grid. The character can move, dodge, and turn based on how the user moves their body.
+---
 
-## Overview
+## **1. Project Overview**
 
-- The **right-hand IMU** detects arm gestures like forward swing, left/right swing, and circular motions.
-- The **thigh IMU** detects leg motions like left/right kicks and running.
-- The microcontroller classifies each motion into actions (e.g., “前挥手”, “左转圈”, “小跑”) using template matching.
-- A **16×3 grid** is drawn on the 128×64 OLED display, showing:
-  - The player as a small dot.
-  - Simple obstacles and targets.
-  - Text labels of the currently detected hand and leg actions.
+This project is a **gesture-controlled action game** running entirely on a **Seeed Studio XIAO ESP32-C3**, an **SSD1306 128×64 OLED display**, and **three ADXL345 accelerometers** mounted on the **right hand, right leg, and left leg**.  
+The player physically performs gestures—like *hand swings, leg swings, turning, running, attacking*—and the on-screen 4×4 avatar moves through a **large 2× world map**, collecting hollow balls before the level timer expires.
 
-The goal is to turn abstract IMU signals into an intuitive, playful, and explainable control interface.
+Game logic is implemented in the main program.  
+Level geometry and spawn points are stored in a separate `level_maps.py` file.
 
-## Hardware
+---
 
-- **Microcontroller**: Xiao ESP32-C3 (or similar ESP32 board running CircuitPython)
-- **IMU sensors**:  
-  - 1 × ADXL345 (right hand, I2C address `0x53`)  
-  - 1 × ADXL345 (thigh, I2C address `0x1D`)
-- **Display**:  
-  - SSD1306 128×64 OLED, I2C, device address `0x3C`
-- **Power**:
-  - USB 5 V input
-  - On-board 3.3 V regulator powers ESP32, IMUs, and OLED
+## **2. How the Game Works**
 
-All devices share the same I2C bus (SDA/SCL) and common 3.3 V / GND.
+### **2.1 Motion → Action Classification**
 
-## Folder Structure
+Each ADXL345 sensor provides 3-axis acceleration. The system:
 
-```text
-.
-├─ README.md
-├─ src/
-│  └─ main_game.py          # Final game script (CircuitPython)
-└─ Documentation/
-   ├─ BodyMotion_IMU_OLED.kicad_sch       # KiCad circuit schematic
-   └─ BodyMotion_System_Block_Diagram.png # System block diagram
+1. Applies **low-pass filtering** to stabilize noisy IMU data  
+2. Converts acceleration to features:  
+   - pitchX / pitchY / pitchZ  
+   - magnitude  
+3. Classifies gestures using **pre-trained templates** (mean/std)  
+4. Applies additional logic:  
+   - stillness detection  
+   - trend detection (continuous pitch change for turning)  
+   - sliding-window peak detection for running  
+   - leg-swing cooldown  
+5. Converts recognized gestures into game actions:
+
+**Hand IMU controls direction & attack:**
+- Forward swing → move forward  
+- Left swing → strafe left  
+- Right swing → strafe right  
+- Circle gestures → curved rotation  
+- Attack gesture → extend arrow & pop balls  
+
+**Leg IMUs control turning & running:**
+- Left leg swing → rotate 90° left  
+- Right leg swing → rotate 90° right  
+- Running → continuous forward movement  
+
+---
+
+## **3. Game Flow**
+
+### **3.1 Difficulty Selection**
+
+Before gameplay, the **rotary encoder** selects:
+- Easy  
+- Medium  
+- Hard  
+
+The encoder push-button confirms the choice.  
+Each difficulty sets a different per-level countdown timer.
+
+### **3.2 Level System**
+
+There are **10 levels**, each containing:
+- A 2× scaled world (256×128 virtual space)  
+- Unique wall structures  
+- A defined spawn location  
+- Ten hollow collectible balls  
+
+If all balls are collected →  
+**“Level X complete”** is shown and the next level loads.
+
+If time runs out →  
+**“fail”** is displayed.
+
+After level 10 →  
+**“All levels complete!”** is shown.
+
+### **3.3 Rendering Pipeline**
+
+Every frame:
+1. Compute camera viewport relative to the player  
+2. Draw walls clipped to the viewport  
+3. Draw hollow balls  
+4. Draw the 4×4 player  
+5. Draw direction arrow  
+6. Draw a mini-map (32×16)  
+7. Draw bottom-left HUD:  
